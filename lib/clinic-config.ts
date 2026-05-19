@@ -60,7 +60,7 @@ export const clinicConfig = {
   tips: [
     {
       icon: "water" as IconName,
-      text: "記得補水，看診前不喝太多咖啡",
+      text: "記得補水，看診前記得刷牙，不要抽菸",
       color: "blue" as IconColorKey,
     },
     {
