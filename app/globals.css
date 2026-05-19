@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens from Direction C Final */
+:root {
+  --c-bg: #f2eadb;
+  --c-bg-deep: #ebe0cb;
+  --c-card: #ffffff;
+  --c-ink: #2a1e15;
+  --c-ink-soft: #5c4a3b;
+  --c-ink-mute: #8f7b69;
+  --c-line: #e5d9c2;
+  --c-orange: #c2410c;
+  --c-orange-bg: #fde8d4;
+  --c-amber: #d97742;
+  --c-amber-bg: #fbe3ca;
+  --c-green: #65864f;
+  --c-green-bg: #dbe8cc;
+  --c-blue: #5778a5;
+  --c-blue-bg: #d8e3f0;
+  --c-rose: #b86c7a;
+  --c-rose-bg: #f2dde2;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-noto-sans-tc), -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ping animation for the live-update dot */
+@keyframes cf-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  80%,
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
