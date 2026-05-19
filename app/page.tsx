@@ -1650,7 +1650,7 @@ function CFConnect() {
     color: IconColorKey;
   }[] = [
     {
-      title: "診所網站",
+      title: "黃文龍醫師網站",
       sub: "smile-tw.com",
       url: clinicConfig.websiteUrl,
       icon: "globe",
@@ -1665,7 +1665,7 @@ function CFConnect() {
     },
   ];
   return (
-    <Section title="認識橙蒔">
+    <Section title="認識黃醫師">
       <div
         style={{
           display: "grid",
