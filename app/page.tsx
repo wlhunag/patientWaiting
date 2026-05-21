@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Icon, treatmentIcon, colors, type IconColorKey } from "@/components/Icon";
-import { clinicConfig } from "@/lib/clinic-config";
-import { pickArticlesForTreatment } from "@/lib/article-picker";
+import { Icon, colors, type IconColorKey } from "@/components/Icon";
+import { clinicConfig, type Article } from "@/lib/clinic-config";
 
 // ─── Types (匹配 /api/lookup 回傳格式) ─────────────────────────
 type UiMode =
@@ -25,7 +24,7 @@ type Progress = {
 
 type Match = {
   id: string;
-  treatment: string;
+  // 注意：刻意不包含 treatment 欄位，伺服器不會傳給病人端
   scheduledStart: string;
   scheduledEnd: string;
   estimatedStart: string;
@@ -38,6 +37,7 @@ type Match = {
   aheadCount: number;
   waitMinutes: number;
   progress: Progress;
+  articles: Article[];
 };
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -594,11 +594,7 @@ function MultiMatch({
                       flexShrink: 0,
                     }}
                   >
-                    <Icon
-                      name={treatmentIcon(m.treatment)}
-                      size={24}
-                      color={TC.rose}
-                    />
+                    <Icon name="calendar" size={24} color={TC.rose} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
@@ -608,7 +604,7 @@ function MultiMatch({
                         fontWeight: 700,
                       }}
                     >
-                      {formatTime(m.scheduledStart)} 預約
+                      {formatTime(m.scheduledStart)} – {formatTime(m.scheduledEnd)}
                     </div>
                     <div
                       style={{
@@ -616,12 +612,9 @@ function MultiMatch({
                         color: TC.inkMute,
                         marginTop: 3,
                         lineHeight: 1.4,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
                       }}
                     >
-                      {m.treatment || "（無療程說明）"}
+                      預估 {m.scheduledDurationMin} 分鐘
                     </div>
                   </div>
                   <Icon name="arrow" size={16} color={TC.inkMute} />
@@ -679,7 +672,7 @@ function RichView({
       {match.mode !== "insession" && <CFProgress progress={match.progress} />}
       <CFTips />
       <CFConnect />
-      <CFPosts treatment={match.treatment} seed={match.id} />
+      <CFPosts articles={match.articles} />
       <CFFooter />
       <div
         style={{
@@ -1261,7 +1254,6 @@ function DotsRow({ ahead, nextup }: { ahead: number; nextup: boolean }) {
 
 // ─── Appointment card ─────────────────────────────────────────
 function CFAppointment({ match }: { match: Match }) {
-  const treatmentText = match.treatment || "看診";
   return (
     <Section title="您的預約">
       <CardBox padding={16}>
@@ -1285,11 +1277,7 @@ function CFAppointment({ match }: { match: Match }) {
               flexShrink: 0,
             }}
           >
-            <Icon
-              name={treatmentIcon(treatmentText)}
-              size={26}
-              color={TC.rose}
-            />
+            <Icon name="tooth" size={26} color={TC.rose} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
@@ -1298,10 +1286,9 @@ function CFAppointment({ match }: { match: Match }) {
                 color: TC.ink,
                 fontWeight: 700,
                 lineHeight: 1.4,
-                wordBreak: "break-word",
               }}
             >
-              {treatmentText}
+              今日預約看診
             </div>
             <div
               style={{
@@ -1737,19 +1724,9 @@ function CFConnect() {
 }
 
 // ─── Posts ─────────────────────────────────────────────────────
-function CFPosts({
-  treatment,
-  seed,
-}: {
-  treatment: string;
-  seed: string;
-}) {
-  const posts = pickArticlesForTreatment(
-    clinicConfig.articles,
-    treatment,
-    2,
-    seed,
-  );
+// 文章已在伺服器端依病人療程挑選好（不會把療程名稱傳到前端）
+function CFPosts({ articles }: { articles: Article[] }) {
+  const posts = articles;
   if (posts.length === 0) return null;
   return (
     <Section
@@ -2076,7 +2053,7 @@ function DoneView({
                 wordBreak: "break-word",
               }}
             >
-              {match.treatment || "看診"} · {minutes} 分鐘
+              共 {minutes} 分鐘看診
             </div>
           </div>
           <Icon name="arrow" size={16} color={TC.inkMute} />

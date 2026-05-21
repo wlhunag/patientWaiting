@@ -31,21 +31,11 @@ export async function POST(req: Request) {
     }
 
     if (body.action === "start") {
+      // 不自動把其他 in_progress 標完成 — 允許同時多人看診（跳台）
       const state: AppointmentState = {
         status: "in_progress",
         actualStart: nowIso,
       };
-      // 如果有別人正在 in_progress，先把他自動標完成（多數情況下助理會忘記按完成）
-      const all = await getAllStates(now);
-      for (const [id, s] of Object.entries(all)) {
-        if (id !== body.id && s.status === "in_progress") {
-          await setState(
-            id,
-            { status: "done", actualStart: s.actualStart, actualEnd: nowIso },
-            now,
-          );
-        }
-      }
       await setState(body.id, state, now);
       return NextResponse.json({ ok: true });
     }

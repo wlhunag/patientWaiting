@@ -1,26 +1,31 @@
 import { NextResponse } from "next/server";
 import { loadTodaySchedule } from "@/lib/schedule-service";
 import { findByName, countAheadOf } from "@/lib/scheduler";
-import { sanitizeTreatment } from "@/lib/parser";
+import { pickArticlesForTreatment } from "@/lib/article-picker";
+import { clinicConfig } from "@/lib/clinic-config";
 import { diffMinutes } from "@/lib/time";
 import type { AppointmentView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 // 從原始狀態 + 等待數推算 UI mode（給設計用的 5 種狀態）
-type UiMode = "waiting" | "nextup" | "delay" | "insession" | "done" | "cancelled";
+type UiMode =
+  | "waiting"
+  | "nextup"
+  | "delay"
+  | "insession"
+  | "done"
+  | "cancelled";
 function deriveMode(view: AppointmentView, aheadCount: number): UiMode {
   if (view.status === "done") return "done";
   if (view.status === "cancelled") return "cancelled";
   if (view.status === "in_progress") return "insession";
-  // 以下為 waiting
   if (aheadCount === 0) return "nextup";
   if (view.delayMin > 0) return "delay";
   return "waiting";
 }
 
-// 提供「目前進度」區塊：診間此時在做什麼 + 下一位準備中。
-// 隱私原則：不洩漏其他病人的療程內容（含金額）。只回時間相關資訊。
+// 「目前進度」區塊：只回時間資訊，絕不洩漏其他病人的療程內容
 function buildProgress(schedule: AppointmentView[], selfId: string) {
   const inSession = schedule.find(
     (s) => s.status === "in_progress" && s.id !== selfId,
@@ -44,11 +49,7 @@ function buildProgress(schedule: AppointmentView[], selfId: string) {
           plannedDurationMin: inSession.scheduledDurationMin,
         }
       : null,
-    nextUp: nextUp
-      ? {
-          estimatedStart: nextUp.estimatedStart,
-        }
-      : null,
+    nextUp: nextUp ? { estimatedStart: nextUp.estimatedStart } : null,
   };
 }
 
@@ -68,12 +69,18 @@ export async function POST(req: Request) {
     }
 
     const nowIso = now.toISOString();
+    // 隱私原則：不把 treatment 回傳給病人端（即使是病人自己的也不送）
+    // 但伺服器端仍會用 treatment 來挑選相關衛教文章
     const result = matches.map((m) => {
       const aheadCount = countAheadOf(schedule, m.id);
+      const articles = pickArticlesForTreatment(
+        clinicConfig.articles,
+        m.treatment,
+        2,
+        m.id,
+      );
       return {
         id: m.id,
-        // 病人自己也看到 sanitized 版本（拿掉 $XXXX 金額），避免他人偷瞄手機
-        treatment: sanitizeTreatment(m.treatment),
         scheduledStart: m.scheduledStart,
         scheduledEnd: m.scheduledEnd,
         estimatedStart: m.estimatedStart,
@@ -89,6 +96,7 @@ export async function POST(req: Request) {
             ? 0
             : Math.max(0, diffMinutes(m.estimatedStart, nowIso)),
         progress: buildProgress(schedule, m.id),
+        articles,
       };
     });
 
