@@ -6,6 +6,10 @@ import type {
   RawAppointment,
 } from "./types";
 
+// 當 in_progress 病人已經超過原訂結束時間，仍未被標記完成時，
+// 我們假設「至少還要再做這麼多分鐘」才會結束，避免後面病人 waitMinutes 變 0。
+const OVERRUN_BUFFER_MIN = 5;
+
 /**
  * 把原始預約 + 助理操作狀態，計算成「預估時間」的 view。
  *
@@ -15,16 +19,19 @@ import type {
  *     - done:        estimatedStart = actualStart, estimatedEnd = actualEnd
  *                    carryOver = max(carryOver, actualEnd)
  *     - in_progress: estimatedStart = actualStart
- *                    estimatedEnd   = actualStart + 預定長度
+ *                    estimatedEnd   = max(actualStart + 預定長度, now + OVERRUN_BUFFER_MIN)
  *                    carryOver = max(carryOver, estimatedEnd)
+ *                    （超時保護：若已過原訂結束時間仍未按完成，至少預留 buffer 分鐘）
  *     - cancelled:   estimatedStart = scheduledStart, estimatedEnd = scheduledEnd
  *                    不更新 carryOver
  *     - waiting:     estimatedStart = max(scheduledStart, carryOver)
  *                    estimatedEnd   = estimatedStart + 預定長度
  *                    carryOver = estimatedEnd
  *
- * 已知簡化：時段重疊（例如三位病人都約 10:00）會被序列化堆疊。
- *           如未來常見且造成困擾，再加入「平行 slot」邏輯。
+ * 已知簡化：
+ *   1) 時段重疊（例如三位病人都約 10:00）會被序列化堆疊。
+ *   2) 多人 in_progress（跳台）時，carryOver 取最晚的 estimatedEnd，
+ *      會略為保守地估計後續病人的等待時間。
  */
 export function computeSchedule(
   appointments: RawAppointment[],
@@ -47,7 +54,10 @@ export function computeSchedule(
       if (estimatedEnd > carryOver) carryOver = estimatedEnd;
     } else if (status === "in_progress") {
       estimatedStart = state!.actualStart ?? appt.scheduledStart;
-      estimatedEnd = addMinutes(estimatedStart, appt.scheduledDurationMin);
+      const plannedEnd = addMinutes(estimatedStart, appt.scheduledDurationMin);
+      // 超時保護：若 plannedEnd 已過去，假設至少還要 OVERRUN_BUFFER_MIN 分鐘
+      const overrunFloor = addMinutes(nowIso, OVERRUN_BUFFER_MIN);
+      estimatedEnd = plannedEnd > overrunFloor ? plannedEnd : overrunFloor;
       if (estimatedEnd > carryOver) carryOver = estimatedEnd;
     } else if (status === "cancelled") {
       estimatedStart = appt.scheduledStart;
