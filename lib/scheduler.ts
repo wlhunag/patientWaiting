@@ -10,6 +10,16 @@ import type {
 // 我們假設「至少還要再做這麼多分鐘」才會結束，避免後面病人 waitMinutes 變 0。
 const OVERRUN_BUFFER_MIN = 5;
 
+// 用「時間值」（getTime）比較兩個 ISO 字串，避免字串比較被時區寫法影響。
+// 例：Google Calendar 回傳 "2026-05-22T14:00:00+08:00"、now 是 UTC "2026-05-22T06:00:00.000Z"，
+//     兩者代表「同一時刻」，但字串比較會錯判 "T14" > "T06"。
+function isAfter(a: string, b: string): boolean {
+  return new Date(a).getTime() > new Date(b).getTime();
+}
+function laterOf(a: string, b: string): string {
+  return isAfter(a, b) ? a : b;
+}
+
 /**
  * 把原始預約 + 助理操作狀態，計算成「預估時間」的 view。
  *
@@ -51,22 +61,21 @@ export function computeSchedule(
     if (status === "done") {
       estimatedStart = state!.actualStart ?? appt.scheduledStart;
       estimatedEnd = state!.actualEnd ?? appt.scheduledEnd;
-      if (estimatedEnd > carryOver) carryOver = estimatedEnd;
+      carryOver = laterOf(carryOver, estimatedEnd);
     } else if (status === "in_progress") {
       estimatedStart = state!.actualStart ?? appt.scheduledStart;
       const plannedEnd = addMinutes(estimatedStart, appt.scheduledDurationMin);
       // 超時保護：若 plannedEnd 已過去，假設至少還要 OVERRUN_BUFFER_MIN 分鐘
       const overrunFloor = addMinutes(nowIso, OVERRUN_BUFFER_MIN);
-      estimatedEnd = plannedEnd > overrunFloor ? plannedEnd : overrunFloor;
-      if (estimatedEnd > carryOver) carryOver = estimatedEnd;
+      estimatedEnd = laterOf(plannedEnd, overrunFloor);
+      carryOver = laterOf(carryOver, estimatedEnd);
     } else if (status === "cancelled") {
       estimatedStart = appt.scheduledStart;
       estimatedEnd = appt.scheduledEnd;
       // 不影響 carryOver
     } else {
       // waiting
-      estimatedStart =
-        appt.scheduledStart > carryOver ? appt.scheduledStart : carryOver;
+      estimatedStart = laterOf(appt.scheduledStart, carryOver);
       estimatedEnd = addMinutes(estimatedStart, appt.scheduledDurationMin);
       carryOver = estimatedEnd;
     }
@@ -110,10 +119,11 @@ export function countAheadOf(
   if (idx === -1) return 0;
   // 在我前面（按 estimatedStart 排）、狀態為 waiting 或 in_progress 的
   const me = views[idx];
+  const meTime = new Date(me.estimatedStart).getTime();
   return views.filter(
     (v) =>
       v.id !== appointmentId &&
       (v.status === "waiting" || v.status === "in_progress") &&
-      v.estimatedStart <= me.estimatedStart,
+      new Date(v.estimatedStart).getTime() <= meTime,
   ).length;
 }

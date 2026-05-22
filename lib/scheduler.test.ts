@@ -22,12 +22,17 @@ function appt(
   };
 }
 
-// 工具：把 "HH:mm" + 今天日期，組成 ISO 字串（台北時區）
+// 工具：把 "HH:mm" + 今天日期，組成 UTC ISO 字串 ("...Z")
 function t(hhmm: string): string {
-  // 用一個固定日期 2026-05-22（與測試無關，只要前後一致）
   const [hh, mm] = hhmm.split(":").map(Number);
   const d = new Date(Date.UTC(2026, 4, 22, hh - 8, mm, 0, 0)); // 台北 = UTC+8
   return d.toISOString();
+}
+
+// 工具：把 "HH:mm" + 今天日期，組成 Google Calendar 的「+08:00」格式
+// 用來模擬實際從 Google Calendar 抓回來的字串（混合時區格式測試）
+function gcal(hhmm: string): string {
+  return `2026-05-22T${hhmm}:00+08:00`;
 }
 
 // 工具：把 ISO 字串轉回 "HH:mm"（給斷言失敗時看比較好懂）
@@ -120,6 +125,79 @@ describe("computeSchedule — 等待時間估算", () => {
     assert.equal(fmt(vA.estimatedEnd), "14:55");
     assert.equal(fmt(vB.estimatedStart), "14:55", "B 被推到 A 預估結束時間");
     assert.equal(vB.delayMin, 25);
+  });
+
+  // 使用者描述：A 約 2:00、晚了 15 分鐘開始（actualStart 2:15）
+  //              B 約 2:30 → 應該預計 2:45 才輪到（延遲 15 分鐘）
+  it("使用者場景：A delayed 15 分鐘開始，B 在不同時刻查詢都應顯示延遲 15 分鐘", () => {
+    const A = appt("A", t("14:00"), t("14:30"), 30);
+    const B = appt("B", t("14:30"), t("15:00"), 30);
+    const states: Record<string, AppointmentState> = {
+      A: { status: "in_progress", actualStart: t("14:15") },
+    };
+
+    // 在多個 now 時間點檢查 B.estimatedStart 都是 14:45
+    const checkpoints = ["14:00", "14:15", "14:16", "14:20", "14:30", "14:40"];
+    for (const tp of checkpoints) {
+      const now = new Date(t(tp));
+      const [, vB] = computeSchedule([A, B], states, now);
+      assert.equal(
+        fmt(vB.estimatedStart),
+        "14:45",
+        `now=${tp}: B 應該預估 14:45 才開始（不論查詢時間）`,
+      );
+      assert.equal(vB.delayMin, 15, `now=${tp}: B.delayMin 應該是 15`);
+    }
+  });
+
+  // 同樣場景但 A 還沒按開始（status=waiting），now 已經過 14:00
+  it("使用者場景變體：A 已逾時但 status 還是 waiting，B 也要延遲", () => {
+    const A = appt("A", t("14:00"), t("14:30"), 30);
+    const B = appt("B", t("14:30"), t("15:00"), 30);
+    const states: Record<string, AppointmentState> = {}; // A 沒被按開始
+    const now = new Date(t("14:15"));
+    const [vA, vB] = computeSchedule([A, B], states, now);
+
+    assert.equal(fmt(vA.estimatedStart), "14:15", "A 從 now 開始算");
+    assert.equal(fmt(vA.estimatedEnd), "14:45", "A 估到 14:45 結束");
+    assert.equal(fmt(vB.estimatedStart), "14:45");
+    assert.equal(vB.delayMin, 15);
+  });
+
+  // 回歸測試：模擬實際從 Google Calendar 抓回的格式（"+08:00" 而非 UTC "Z"），
+  // actualStart/now 則是 UTC（因為 storage 是用 new Date().toISOString()）。
+  // 這種混合會讓字串比較失效，導致延遲不傳遞。
+  it("時區格式混合：Google Calendar 的 +08:00 + UTC actualStart/now → 延遲仍須正確傳遞", () => {
+    const A: RawAppointment = {
+      id: "A",
+      patientChartNo: "x",
+      patientName: "A",
+      treatment: "",
+      scheduledStart: gcal("14:00"),
+      scheduledEnd: gcal("14:30"),
+      scheduledDurationMin: 30,
+      rawSummary: "",
+    };
+    const B: RawAppointment = {
+      id: "B",
+      patientChartNo: "x",
+      patientName: "B",
+      treatment: "",
+      scheduledStart: gcal("14:30"),
+      scheduledEnd: gcal("15:00"),
+      scheduledDurationMin: 30,
+      rawSummary: "",
+    };
+    // A 還沒被按開始（status=waiting），now 在 A 預訂時間之後 15 分鐘
+    const now = new Date(t("14:15"));
+    const [, vB] = computeSchedule([A, B], {}, now);
+
+    assert.equal(vB.delayMin, 15, "B 延遲 15 分鐘");
+    assert.equal(
+      new Date(vB.estimatedStart).getTime(),
+      new Date(t("14:45")).getTime(),
+      "B.estimatedStart 應該是 14:45（不論字串格式）",
+    );
   });
 
   it("情境 6：兩位平行 in_progress（跳台）→ B 等到最晚的那位結束", () => {

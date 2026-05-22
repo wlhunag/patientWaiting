@@ -32,7 +32,11 @@ function buildProgress(schedule: AppointmentView[], selfId: string) {
   );
   const nextUp = schedule
     .filter((s) => s.status === "waiting" && s.id !== selfId)
-    .sort((a, b) => a.estimatedStart.localeCompare(b.estimatedStart))[0];
+    .sort(
+      (a, b) =>
+        new Date(a.estimatedStart).getTime() -
+        new Date(b.estimatedStart).getTime(),
+    )[0];
 
   const now = Date.now();
   return {
